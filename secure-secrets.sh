@@ -2,6 +2,18 @@
 
 SECRETS_FILE="$HOME/.secrets.gpg"
 TEMP_FILE="$HOME/.secrets.tmp"
+PASSPHRASE_FILE="$HOME/.secrets.pass"
+
+# Create passphrase file if it doesn't exist
+init_passphrase() {
+    if [[ ! -f "$PASSPHRASE_FILE" ]]; then
+        echo "🔐 First time setup: Creating encryption passphrase..."
+        read -s -p "Enter a strong passphrase: " passphrase
+        echo
+        echo "$passphrase" > "$PASSPHRASE_FILE"
+        chmod 600 "$PASSPHRASE_FILE"
+    fi
+}
 
 # 🛠 Check if GPG is Installed (Mac & Linux)
 check_gpg() {
@@ -27,15 +39,25 @@ check_gpg() {
 
 # 🔒 Encrypt the Secrets File
 encrypt_secrets() {
-    gpg --symmetric --cipher-algo AES256 --output "$SECRETS_FILE" "$TEMP_FILE"
-    chmod 600 "$SECRETS_FILE"
-    rm -f "$TEMP_FILE"
+    if [[ -f "$PASSPHRASE_FILE" ]]; then
+        gpg --batch --yes --passphrase-file "$PASSPHRASE_FILE" --symmetric --cipher-algo AES256 --output "$SECRETS_FILE" "$TEMP_FILE"
+        chmod 600 "$SECRETS_FILE"
+        rm -f "$TEMP_FILE"
+    else
+        echo "❌ Error: Passphrase file not found. Run initialization first."
+        exit 1
+    fi
 }
 
 # 🔓 Decrypt and Read Secrets
 decrypt_secrets() {
     if [[ -f "$SECRETS_FILE" ]]; then
-        gpg --quiet --decrypt "$SECRETS_FILE" 2>/dev/null || echo ""
+        if [[ -f "$PASSPHRASE_FILE" ]]; then
+            gpg --batch --quiet --passphrase-file "$PASSPHRASE_FILE" --decrypt "$SECRETS_FILE" 2>/dev/null || echo ""
+        else
+            echo "❌ Error: Passphrase file not found. Run initialization first."
+            exit 1
+        fi
     else
         echo ""
     fi
@@ -106,8 +128,9 @@ usage() {
     echo "Usage: $0 {add|get|list|delete} [key] [value]"
 }
 
-# 🔄 Ensure GPG is Installed Before Running Any Command
+# 🔄 Ensure GPG is Installed and Passphrase is Set Before Running Any Command
 check_gpg
+init_passphrase
 
 case "$1" in
     add)
